@@ -1,0 +1,16 @@
+# Core NL2SQL stack
+vanna[gemini,sqlite]>=2.0.0
+
+# API framework
+fastapi
+uvicorn[standard]
+
+# Data & charts
+plotly
+pandas
+
+# Utilities
+python-dotenv
+
+# LLM provider - Google Gemini (free via AI Studio)
+google-genai
