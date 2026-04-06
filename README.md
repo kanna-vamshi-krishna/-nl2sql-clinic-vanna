@@ -1,2 +1,242 @@
-# -nl2sql-clinic-vanna
-AI-powered Natural Language to SQL system built with Vanna AI 2.0, FastAPI, and Google Gemini. Ask questions in plain English and get instant SQL results from a clinic database.
+# Clinic NL2SQL — AI-Powered Natural Language to SQL System
+
+Ask questions about clinic data in plain English and get instant SQL results — no SQL knowledge required.
+
+**Built with:** Vanna AI 2.0 · FastAPI · Google Gemini (free) · SQLite · Plotly
+
+---
+
+## Project Overview
+
+This system converts natural-language questions into SQL queries, executes them against a clinic SQLite database, and returns structured results with optional Plotly charts.
+
+```
+User Question (English)
+        │
+        ▼
+  FastAPI /chat
+        │
+        ▼
+ Vanna 2.0 Agent
+ (GeminiLlmService + RunSqlTool + DemoAgentMemory)
+        │
+        ▼
+  SQL Validation (SELECT-only guard)
+        │
+        ▼
+  SQLite Execution (clinic.db)
+        │
+        ▼
+  Results + Summary + Optional Chart
+```
+
+---
+
+## LLM Provider
+
+**Google Gemini** (`gemini-2.0-flash`) — free tier via [AI Studio](https://aistudio.google.com/apikey).
+
+---
+
+## Prerequisites
+
+- Python 3.10 or newer
+- A free Google Gemini API key — get one at https://aistudio.google.com/apikey
+
+---
+
+## Setup Instructions
+
+### 1. Clone / download the project
+
+```bash
+git clone <your-repo-url>
+cd nl2sql_project
+```
+
+### 2. Create and activate a virtual environment (recommended)
+
+```bash
+python -m venv .venv
+# macOS / Linux
+source .venv/bin/activate
+# Windows
+.venv\Scripts\activate
+```
+
+### 3. Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 4. Configure your API key
+
+```bash
+cp .env.example .env
+# Open .env and paste your Google Gemini API key
+```
+
+Your `.env` file should look like:
+
+```
+GOOGLE_API_KEY=AIza...
+```
+
+### 5. Create the database
+
+```bash
+python setup_database.py
+```
+
+Expected output:
+
+```
+✅ Database created: clinic.db
+   Created 200 patients
+   Created 15 doctors
+   Created 500 appointments
+   Created ~299 treatments
+   Created 300 invoices
+```
+
+### 6. Seed the agent memory
+
+```bash
+python seed_memory.py
+```
+
+This pre-loads 15 known-good question→SQL pairs into the agent's DemoAgentMemory so it has a head start.
+
+### 7. Start the API server
+
+```bash
+uvicorn main:app --port 8000 --reload
+```
+
+The `--reload` flag auto-restarts on code changes (dev mode only — remove for production).
+
+---
+
+## One-liner (all steps combined)
+
+```bash
+pip install -r requirements.txt && \
+python setup_database.py && \
+python seed_memory.py && \
+uvicorn main:app --port 8000
+```
+
+---
+
+## API Documentation
+
+Interactive Swagger UI: http://localhost:8000/docs
+
+### POST /chat
+
+Ask a question in plain English.
+
+**Request:**
+
+```json
+{
+  "question": "Show me the top 5 patients by total spending",
+  "conversation_id": null
+}
+```
+
+**Response:**
+
+```json
+{
+  "message": "Here are the top 5 patients by total spending...",
+  "sql_query": "SELECT p.first_name || ' ' || p.last_name AS patient_name, SUM(i.total_amount) AS total_spending FROM invoices i JOIN patients p ON p.id = i.patient_id GROUP BY p.id ORDER BY total_spending DESC LIMIT 5;",
+  "columns": ["patient_name", "total_spending"],
+  "rows": [["Rahul Sharma", 7200.5], ["Priya Gupta", 6100.0]],
+  "row_count": 5,
+  "chart": { "data": [...], "layout": {...} },
+  "chart_type": "bar"
+}
+```
+
+**cURL example:**
+
+```bash
+curl -X POST http://localhost:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"question": "How many patients do we have?"}'
+```
+
+### GET /health
+
+Liveness probe.
+
+```bash
+curl http://localhost:8000/health
+```
+
+```json
+{
+  "status": "ok",
+  "database": "connected",
+  "agent_memory_items": 15,
+  "cache_entries": 0
+}
+```
+
+---
+
+## Project Structure
+
+```
+nl2sql_project/
+├── setup_database.py   # Creates clinic.db schema + inserts dummy data
+├── seed_memory.py      # Pre-seeds agent memory with 15 Q&A pairs
+├── vanna_setup.py      # Vanna 2.0 Agent initialization (LLM, tools, memory)
+├── main.py             # FastAPI application (endpoints, validation, caching)
+├── requirements.txt    # Python dependencies
+├── .env.example        # Template for environment variables
+├── README.md           # This file
+├── RESULTS.md          # Test results for the 20 benchmark questions
+└── clinic.db           # Generated SQLite database (created by setup_database.py)
+```
+
+---
+
+## Architecture
+
+### Vanna 2.0 Agent Components
+
+| Component | Implementation | Purpose |
+|---|---|---|
+| LLM Service | `GeminiLlmService` (gemini-2.0-flash) | Generates SQL from natural language |
+| SQL Runner | `SqliteRunner` (clinic.db) | Executes SELECT queries safely |
+| Memory | `DemoAgentMemory` | Learns from successful Q→SQL pairs |
+| Tools | `RunSqlTool`, `VisualizeDataTool`, `SaveQuestionToolArgsTool`, `SearchSavedCorrectToolUsesTool` | Agent capabilities |
+| User Resolver | `DefaultUserResolver` | Maps all requests to a default user |
+
+### SQL Safety
+
+Every SQL query generated by the AI is validated before execution:
+- Only `SELECT` statements are allowed
+- Blocked keywords: `INSERT`, `UPDATE`, `DELETE`, `DROP`, `ALTER`, `EXEC`, `GRANT`, `REVOKE`, `SHUTDOWN`, `xp_`, `sp_`
+- System tables (`sqlite_master`, `sqlite_sequence`) are blocked
+
+### Query Caching
+
+Successful query results are cached in-memory (up to 200 entries, LRU-style) to avoid redundant LLM calls for repeated questions.
+
+### Rate Limiting
+
+Each IP address is limited to 20 requests per 60-second window.
+
+---
+
+## Bonus Features Implemented
+
+- ✅ Chart generation (Plotly charts via `VisualizeDataTool`)
+- ✅ Input validation (min/max length, empty check)
+- ✅ Query caching (in-memory, 200-entry LRU)
+- ✅ Rate limiting (20 req/min per IP)
+- ✅ Structured logging (timestamps, levels, request tracking)
