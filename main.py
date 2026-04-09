@@ -313,10 +313,11 @@ async def chat(request: Request, body: ChatRequest):
     try:
         result = await _run_agent(question, body.conversation_id)
     except Exception as exc:
+        import traceback as _tb
         logger.exception("Unexpected error in /chat")
         return ChatResponse(
-            message="An unexpected error occurred while processing your question.",
-            error=str(exc),
+            message=f"Agent error: {type(exc).__name__}: {exc}",
+            error=_tb.format_exc(),
         )
 
     # Validate generated SQL before surfacing

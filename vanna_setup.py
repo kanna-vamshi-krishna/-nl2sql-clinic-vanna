@@ -71,10 +71,10 @@ def build_agent() -> Agent:
 
     # 4. Tool Registry
     registry = ToolRegistry()
-    registry.register(RunSqlTool(sql_runner=sql_runner))
-    registry.register(VisualizeDataTool())
-    registry.register(SaveQuestionToolArgsTool())
-    registry.register(SearchSavedCorrectToolUsesTool())
+    registry.register_local_tool(RunSqlTool(sql_runner=sql_runner), access_groups=["user", "admin"])
+    registry.register_local_tool(VisualizeDataTool(), access_groups=["user", "admin"])
+    registry.register_local_tool(SaveQuestionToolArgsTool(), access_groups=["user", "admin"])
+    registry.register_local_tool(SearchSavedCorrectToolUsesTool(), access_groups=["user", "admin"])
 
     # 5. User resolver
     user_resolver = DefaultUserResolver()
